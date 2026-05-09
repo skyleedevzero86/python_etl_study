@@ -1,4 +1,4 @@
-# python_etl_mvp
+# 진료 운영 비즈니스 통계 대시보드
 
 
 <img width="1435" height="893" alt="image" src="https://github.com/user-attachments/assets/cc391939-8d1d-4e89-9c61-43d27994d0d5" />
