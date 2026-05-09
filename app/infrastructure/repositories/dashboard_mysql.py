@@ -44,6 +44,7 @@ _TABLES = [
     "disability_care_institution",
     "inpatient_statistics",
     "treatment_department_statistics",
+    "batch_job_log",
 ]
 
 
@@ -114,7 +115,7 @@ def _sanitize_row(table_name: str, row: dict[str, Any]) -> dict[str, Any]:
             out[key] = _mask_text(raw)
             out[f"{key}_sha256"] = _sha256_text(raw)
             continue
-        if "name" in key_l and key_l not in {"department_name", "institution_name", "drug_name"}:
+        if "name" in key_l and key_l not in {"department_name", "institution_name", "drug_name", "job_name"}:
             out[key] = _mask_name(raw)
             out[f"{key}_sha256"] = _sha256_text(raw)
             continue

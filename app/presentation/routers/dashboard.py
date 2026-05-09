@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path as ApiPath, Request
+from fastapi import APIRouter, Depends, HTTPException, Path as ApiPath, Query, Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from fastapi.responses import HTMLResponse
@@ -10,7 +10,6 @@ from fastapi.templating import Jinja2Templates
 
 from app.domain.datetime_display import cell_value_display
 from app.application.dashboard_service import DashboardApplicationService
-from app.application.etl_service import EtlApplicationService
 from app.domain.display_labels import CLINICAL_CATEGORY_CODE_KR, STATUS_CODE_KR
 from app.domain.dashboard_schema import (
     DashboardSnapshot,
@@ -18,9 +17,14 @@ from app.domain.dashboard_schema import (
     TableDetailSnapshot,
     TableStatsSnapshot,
 )
+from app.infrastructure.batch_jobs import (
+    JOB_ETL_POSTGRES_TO_MYSQL,
+    retry_due_batch_jobs,
+    run_logged_batch_job,
+)
 from app.infrastructure.repositories.dashboard_mysql import _sanitize_row
 from app.infrastructure.repositories.dashboard_postgres import PostgresDashboardRepository
-from app.infrastructure.repositories.etl_sync_repository import EtlSyncRepository
+from app.infrastructure.repositories.batch_job_log import BatchJobLogRepository
 from app.presentation.dependencies import get_dashboard_service, get_db
 
 router = APIRouter(tags=["대시보드"])
@@ -51,6 +55,7 @@ _TABLE_NAME_KR = {
     "disability_care_institution": "장애인 돌봄 기관",
     "inpatient_statistics": "입원 통계",
     "treatment_department_statistics": "진료과 통계",
+    "batch_job_log": "배치 실행 로그",
 }
 _COLUMN_NAME_KR = {
     "id": "아이디",
@@ -167,6 +172,18 @@ _COLUMN_NAME_KR = {
     "doctorTreatment_endtime": "의사 진료 종료시각",
     "pre_treatment_id": "이전 진료 아이디",
     "guardian": "보호자",
+    "batch_log_id": "배치 로그 ID",
+    "job_name": "작업명",
+    "trigger_type": "실행 유형",
+    "attempt_no": "시도 번호",
+    "max_attempts": "최대 시도",
+    "retry_of_log_id": "재처리 원본 로그",
+    "started_at": "시작 시각",
+    "finished_at": "종료 시각",
+    "next_retry_at": "다음 재처리 시각",
+    "request_payload": "요청 내용",
+    "result_payload": "결과 내용",
+    "error_message": "오류 메시지",
 }
 _VALUE_KR = {
     **STATUS_CODE_KR,
@@ -177,6 +194,11 @@ _VALUE_KR = {
     "N": "아니오",
     "1": "예",
     "0": "아니오",
+    "RUNNING": "실행중",
+    "RETRIED": "재처리됨",
+    "scheduler": "스케줄러",
+    "manual": "수동",
+    "retry": "재처리",
 }
 
 
@@ -313,8 +335,42 @@ def dashboard_etl_sync_pg_to_mysql(
     pg = getattr(request.app.state, "postgres_engine", None)
     if pg is None:
         raise HTTPException(status_code=503, detail="PostgreSQL 연결이 없습니다.")
-    repo = EtlSyncRepository(session, pg)
-    return EtlApplicationService(repo).sync_postgres_to_mysql()
+    return run_logged_batch_job(
+        session=session,
+        settings=request.app.state.settings,
+        job_name=JOB_ETL_POSTGRES_TO_MYSQL,
+        trigger_type="manual",
+        postgres_engine=pg,
+    )
+
+
+@router.get(
+    "/api/dashboard/batch-job-logs",
+    summary="배치 실행 로그 목록",
+)
+def dashboard_batch_job_logs(
+    session: Annotated[Session, Depends(get_db)],
+    status: Annotated[str | None, Query(description="RUNNING/SUCCESS/FAILED/RETRIED")] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> dict[str, Any]:
+    rows = BatchJobLogRepository(session).fetch_recent(status=status, limit=limit)
+    return {"rows": rows}
+
+
+@router.post(
+    "/api/dashboard/batch-job-logs/retry-due",
+    summary="실패 배치 즉시 재처리",
+)
+def dashboard_retry_due_batch_jobs(
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+) -> dict[str, Any]:
+    return retry_due_batch_jobs(
+        settings=request.app.state.settings,
+        session_factory=request.app.state.session_factory,
+        postgres_engine=getattr(request.app.state, "postgres_engine", None),
+        limit=limit,
+    )
 
 
 @router.get(

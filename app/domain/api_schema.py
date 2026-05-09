@@ -36,6 +36,7 @@ class MyHealthResponse(BaseModel):
 
 class PipelineRunResponse(BaseModel):
     job: str = Field(description="실행된 작업 타입", examples=["initial", "completion"])
+    batch_log_id: int | None = Field(default=None, description="batch_job_log 실행 로그 ID")
     suffix: str | None = Field(default=None, description="실행 시각 기반 식별 접미사")
     patients_inserted_from: int | None = Field(default=None, description="초기 배치 환자 시작 번호")
     check_ins: dict[str, int] | None = Field(default=None, description="접수 생성 결과")

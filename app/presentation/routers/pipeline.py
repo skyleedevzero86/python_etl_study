@@ -1,11 +1,12 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
+from sqlalchemy.orm import Session
 
-from app.application.pipeline_service import PipelineApplicationService
 from app.domain.api_schema import PipelineRunResponse
 from app.domain.enums import PipelineJob
-from app.presentation.dependencies import get_pipeline_service
+from app.infrastructure.batch_jobs import pipeline_job_name, run_logged_batch_job
+from app.presentation.dependencies import get_db
 
 router = APIRouter(prefix="/pipeline", tags=["배치"])
 
@@ -42,16 +43,23 @@ def run_pipeline(
         ),
     ],
     request: Request,
-    service: Annotated[PipelineApplicationService, Depends(get_pipeline_service)],
+    session: Annotated[Session, Depends(get_db)],
 ) -> PipelineRunResponse:
     if not request.app.state.settings.enable_pipeline_write:
         raise HTTPException(
             status_code=403,
             detail="수동 파이프라인 실행이 비활성화되었습니다. .env 의 ENABLE_PIPELINE_WRITE=true 로 켜세요.",
         )
-    payload = service.execute(job)
+    payload = run_logged_batch_job(
+        session=session,
+        settings=request.app.state.settings,
+        job_name=pipeline_job_name(job),
+        trigger_type="manual",
+        request_payload={"path_job": job.value},
+    )
     known = {
         "job",
+        "batch_log_id",
         "suffix",
         "patients_inserted_from",
         "check_ins",
@@ -60,6 +68,7 @@ def run_pipeline(
     }
     return PipelineRunResponse(
         job=str(payload.get("job", job.value)),
+        batch_log_id=payload.get("batch_log_id"),
         suffix=payload.get("suffix"),
         patients_inserted_from=payload.get("patients_inserted_from"),
         check_ins=payload.get("check_ins"),

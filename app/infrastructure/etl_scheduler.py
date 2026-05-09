@@ -4,9 +4,13 @@ from typing import TYPE_CHECKING
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from app.application.etl_service import EtlApplicationService
+from app.infrastructure.batch_jobs import (
+    JOB_ETL_MYSQL_TO_POSTGRES,
+    JOB_ETL_POSTGRES_TO_MYSQL,
+    JOB_ETL_WEARABLE_SLOT,
+    run_logged_batch_job,
+)
 from app.infrastructure.config import Settings
-from app.infrastructure.repositories.etl_sync_repository import EtlSyncRepository
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
@@ -25,12 +29,15 @@ def register_etl_jobs(
     def _wearable_slot() -> None:
         session = session_factory()
         try:
-            repo = EtlSyncRepository(session, postgres_engine)
-            result = EtlApplicationService(repo).generate_wearable_slot()
-            session.commit()
+            result = run_logged_batch_job(
+                session=session,
+                settings=settings,
+                job_name=JOB_ETL_WEARABLE_SLOT,
+                trigger_type="scheduler",
+                postgres_engine=postgres_engine,
+            )
             logger.info("ETL 웨어러블 슬롯 완료: %s", result)
         except Exception:
-            session.rollback()
             logger.exception("ETL 웨어러블 슬롯 실패")
             raise
         finally:
@@ -39,12 +46,15 @@ def register_etl_jobs(
     def _pg_to_mysql() -> None:
         session = session_factory()
         try:
-            repo = EtlSyncRepository(session, postgres_engine)
-            result = EtlApplicationService(repo).sync_postgres_to_mysql()
-            session.commit()
+            result = run_logged_batch_job(
+                session=session,
+                settings=settings,
+                job_name=JOB_ETL_POSTGRES_TO_MYSQL,
+                trigger_type="scheduler",
+                postgres_engine=postgres_engine,
+            )
             logger.info("ETL PostgreSQL→MySQL 완료: %s", result)
         except Exception:
-            session.rollback()
             logger.exception("ETL PostgreSQL→MySQL 실패")
             raise
         finally:
@@ -53,12 +63,15 @@ def register_etl_jobs(
     def _mysql_to_pg() -> None:
         session = session_factory()
         try:
-            repo = EtlSyncRepository(session, postgres_engine)
-            result = EtlApplicationService(repo).sync_mysql_treatments_to_postgres()
-            session.commit()
+            result = run_logged_batch_job(
+                session=session,
+                settings=settings,
+                job_name=JOB_ETL_MYSQL_TO_POSTGRES,
+                trigger_type="scheduler",
+                postgres_engine=postgres_engine,
+            )
             logger.info("ETL MySQL→PostgreSQL 완료: %s", result)
         except Exception:
-            session.rollback()
             logger.exception("ETL MySQL→PostgreSQL 실패")
             raise
         finally:

@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     etl_postgres_to_mysql_hour: int = 10
     etl_mysql_to_postgres_hour: int = 16
 
+    enable_batch_retry: bool = True
+    batch_retry_interval_minutes: int = 5
+    batch_retry_delay_minutes: int = 5
+    batch_retry_max_attempts: int = 3
+    batch_retry_limit: int = 10
+
     postgres_port: int = 5433
     postgres_user: str = "postgres"
     postgres_password: str = "root1234"

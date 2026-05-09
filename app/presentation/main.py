@@ -24,6 +24,7 @@ from app.infrastructure.database import (
     create_postgres_engine_from_settings,
     create_session_factory,
 )
+from app.infrastructure.repositories.batch_job_log import ensure_batch_job_log_table
 from app.infrastructure.scheduler import start_background_scheduler
 from app.presentation.routers import dashboard, health, pg_my_health, pipeline
 
@@ -118,6 +119,8 @@ async def lifespan(app: FastAPI):
     engine = create_engine_from_settings(settings)
     _verify_mysql_or_raise(engine, settings)
     logger.info("MySQL 연결 확인 완료")
+    ensure_batch_job_log_table(engine)
+    logger.info("배치 실행 로그 테이블 확인 완료")
 
     postgres_engine = None
     try:
